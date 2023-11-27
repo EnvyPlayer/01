@@ -1,0 +1,290 @@
+#!/usr/local/bin/bash
+#debug mode like a boss
+#set -x
+#if [[ "`pgrep 01 | wc -l`" > 10 ]]; then
+#fi
+
+
+WHO=$USER
+if [ ! -z $SUDO_USER ]; then WHO=$SUDO_USER; fi
+WHOSHOUSE=$(awk -v u="$WHO" -v FS=':' '$1==u {print $6}' /etc/passwd)
+WHERE=$(pwd)
+WHEN=$(date)
+WHAT=$1
+HOW=$2
+ALLELSE="${@:2}"
+TOILET="/tmp/01_"`date +%s`".log"
+
+NOTTENDIR=$WHOSHOUSE/.01/
+if [ ! -d $NOTTTENDIR ] ; then 
+	mkdir -p $NOTTENDIR; 
+fi
+
+PROXY_IP=127.0.0.1
+PROXY_PORT=12345
+
+#find $NOTTENDIR -name '.totp' -type f -mtime -1h
+TOTPFILE=.totp
+if [[ -f $NOTTENDIR$TOTPFILE ]]; then 
+    find $NOTTENDIR -name $TOTPFILE -type f -mmin -110 | grep $TOTPFILE >/dev/null
+    if [[ $? -eq 1 ]]; then 
+		rm -f $NOTTENDIR$TOTPFILE
+	fi
+fi
+if [[ ! -f $NOTTENDIR$TOTPFILE ]]; then 
+	if [[ -z $TOTP ]]; then
+		TOTP=$(TOTP=0 01 p | awk '/01 2KN/ { print $3 };')
+	 	echo $TOTP > $NOTTENDIR/.totp
+		export TOTP=$TOTP
+	fi
+else
+	TOTP=$(cat $NOTTENDIR$TOTPFILE)
+fi
+if [[ "1" == "$DEBUG" ]]; then
+	HTTP_PROXY="http://$TOTP:$TOTP@$PROXY_IP:$PROXY_PORT"
+else
+	HTTP_PROXY="http://$TOTP:$TOTP@$PROXY_IP:$PROXY_PORT"
+	DEBUG=0
+fi
+
+
+#they commin, nigga!!!
+RunMain() { 
+
+	if [[ -z $WHAT ]]; then
+		WHAT=.01
+	fi
+	
+	EXISTS=$(ls ./$WHAT 2>/dev/null)
+	if [[ -z $EXISTS ]]; then
+		ExecuteCommand $WHAT
+	else
+		. $WHAT $HOW
+	fi
+
+}
+
+Execute() {
+	export TOTP=$TOTP
+	export http_proxy=$HTTP_PROXY
+	export https_proxy=$HTTP_PROXY
+	export HTTPS_PROXY=$HTTP_PROXY
+	export HTTPS_PROXY=$HTTP_PROXY
+	sh -c "$ALLELSE"
+}
+
+ExecuteAsRoot() {
+	#set -x
+	export TOTP=$TOTP
+	export http_proxy=$HTTP_PROXY
+	export https_proxy=$HTTP_PROXY
+	export HTTP_PROXY=$HTTP_PROXY
+	export HTTPS_PROXY=$HTTP_PROXY
+	sudo -E sh -c "$ALLELSE"
+	#set +x
+}
+
+ExecuteTimes() {
+	COUNT=0
+	TIMES=1
+	if [[ ! -z $1 ]]; then 
+		TIMES=$1
+	else
+		TIMES=100000000
+	fi
+	while [[ $COUNT -lt $TIMES ]]; do
+		sleep 1
+		#clear
+		Execute $
+		((COUNT++))
+	done
+}
+
+
+ExecuteBrowser () {
+	ExecuteTotp 'off'
+	http_proxy=$HTTP_PROXY
+	https_proxy=$http_proxy
+
+	CHROMIUM=`which chromium-browser`
+	IRIDIUM=`which iridium`
+	CHROME=`which chrome`
+	FIREFOX=`which firefox`
+
+	if [[ ! -z $IRIDIUM ]]; then
+		echo HTTP_PROXY=$http_proxy HTTPS_PROXY=$https_proxy $IRIDIUM &
+		HTTP_PROXY=$http_proxy HTTPS_PROXY=$https_proxy $IRIDIUM &
+		Log "Started Iridium!"
+		return
+	elif [[ ! -z $CHROMIUM] ]]; then
+		HTTP_PROXY=$http_proxy HTTPS_PROXY=$https_proxy $CHROMIUM &
+		Log "Started Chromium!"
+		return
+	elif [[ ! -z $CHROME ]]; then 
+		$CHROME &
+		Log "Started Chrome!"
+		return
+	elif [[ ! -z $FIREFOX ]]; then
+		$FIREFOX &
+		Log "Started firefox!"
+		return
+	else
+		Log "No browser found."
+		exit 1
+	fi
+}
+ExecuteSkype () {
+/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=/app/bin/skype --file-forwarding com.skype.Client &
+}
+
+ExecuteTotp () {
+	TOTPOLD=$TOTP
+    [[ -z $TOTP ]] && echo -n "Enter token: "; read; TOTP=$REPLY
+	if [ ! -z $TOTPOLD ] && [ $TOTPOLD -eq 0 ] ; then
+		echo -n "01 2KN $TOTP"
+	fi
+}
+
+ExecuteEdit() {
+	NOTTEN=`which 01`
+	if echo $ALLELSE | grep untrust >/dev/null; then
+		cat $NOTTEN | sed 's/PROXY_IP=.*/PROXY_IP=127\.0\.0\.1/g' | sed 's/PROXY_PORT=.*/PROXY_PORT=12345/g' | sed 's/^\t*TOTP.*echo.*$/        echo -n \"Enter token\: \"\; read\; TOTP=\$REPLY/g' | grep -v -E '\s*#\s+' 
+	elif echo $ALLELSE | grep dump >/dev/null; then
+		cat $NOTTEN
+	else
+		vim $NOTTEN
+	fi
+
+}
+
+ExecuteCleanup() {
+	FILES="$NOTTENDIR$TOTPFILE /tmp/01*.log"
+	FLAGS=
+	if [[ -z $1 ]]; then
+		FLAGS="-i $FLAGS"
+	elif [[ $1 -eq "f" ]] || [[ $1 -eq 'c' ]] ; then
+		FLAGS="-f $FLAGS"
+	fi
+	for i in $FILES; do
+		sh -c "rm $FLAGS $i"
+	done
+}
+
+ExecuteApt() {
+	01 X "grep -v Proxy /etc/apt/apt.conf > /etc/apt/apt.conf.new; echo Acquire::http::Proxy \\\"\$HTTP_PROXY\\\"\; >> /etc/apt/apt.conf.new; mv /etc/apt/apt.conf /etc/apt/apt.conf.old.`date +%s`; mv /etc/apt/apt.conf.new /etc/apt/apt.conf"
+	01 X apt update
+	01 X apt search $ALLELSE
+	echo -n "Install?"
+	read
+	echo $REPLY | grep -i Y >/dev/null
+	if [[ $? -eq 0 ]]; then
+		01 X apt install -y $ALLELSE
+	fi
+}
+
+ExecuteSshTunnel() {
+socat - PROXY:$PROXY_IP:`echo $ALLELSE | sed 's/ /:/'`,proxyport=$PROXY_PORT,proxyauth=$TOTP:$TOTP
+}
+
+AddToolsCommand() {
+	C="$1"; 
+	S+=("$C"); 
+	F[$C]="$2"; 
+	P[$C]="$3";
+	D[$C]="$4";
+}
+
+ToolsHelp() {
+	echo "[$WHO\\$HOSTNAME] $WHERE \$" 01 $WHAT $ALLELSE 
+	echo
+
+	#[ -n $1 ] && ( echo "$1	" ${F[$1]} ; echo ${P[$1]} ; echo ;  ) && return;
+	for c in "${S[@]}" ; do
+		echo " $c	" ${F[$c]} "	" ${D[$c]}
+		echo "				${P[$c]}"
+	done
+}
+
+ToolsComment() {
+	grep -vE '^(\#.*| *)$' $1
+}
+
+ToolsColumn() {
+	echo
+}
+
+ToolsProcess() {
+	ps aux | awk "$1 { print \$$2 }"
+}
+
+ExecuteTools() {
+	declare -A F
+	declare -A D
+	declare -A P
+	C=
+	S=()
+	TOOLS_CMD=$1
+	[[ -n $2 ]] && TOOLS_VAL=$2 || TOOLS_VAL=-
+
+	AddToolsCommand 'h' 'ToolsHelp'		'[command]'				'Prints this help text for all the available commands' 
+	AddToolsCommand 'c' 'ToolsComment'  '[file]'				'Remove all comment lines from a file or stdin by default' 
+	AddToolsCommand 'C' 'ToolsColumn' 	'[file] [col] [regex]'	'Print column 1 for all lines from stdin by default.'
+	AddToolsCommand 'p' 'ToolsProcess'  '[awk param]'               'Runs "ps aux | awk" with the regex to match and the col to print'
+	declare -a "TOOLS_ARR=($( echo "$TOOLS_VAL" | sed 's/[][`~!@#$%^&*():;<>.,?/\|{}=+-]/\\&/g' ))"
+
+	[ -n  "${F[$TOOLS_CMD]}" ] && ( ${F[$TOOLS_CMD]} ${TOOLS_VAL} ${@:3} )
+}
+
+ExecuteService() {
+	service $1 $2
+}
+
+ExecuteGit() {
+	git $ALLELSE
+}
+
+ExecuteCommand() {
+	LogStart "ExecuteCommand"
+
+	case $WHAT in
+      't') ExecuteTools ${ALLELSE:0:1}  ${ALLELSE:2} ;;
+      'X') ExecuteAsRoot 1 ;;
+	  'x') ExecuteTimes 1 ;;
+	  'l') ExecuteTimes ;;
+	  'loop') ExecuteTimes "${@:3}" ;;
+		's') ExecuteSkype ;;
+		'p') ExecuteTotp ;;
+		'e') ExecuteEdit ;;
+		'b') ExecuteBrowser ;;
+		'A') ExecuteApt ;;
+		'S') ExecuteService $ALLELSE ;;
+		'g') ExecuteGit ;;
+		'c') ExecuteCleanup $ALLELSE ;;
+		'C') ExecuteCleanup 'f' ;;
+        '_s') ExecuteSshTunnel ;;
+	  'browser') ExecuteBrowser ;;
+	  *) echo "Command/file not found. User too retarded. Please replace." ;; 
+	esac
+	#implement commands here
+
+	LogEnd "ExecuteCommand"
+}
+
+Log () {
+	echo $1 >$TOILET
+}
+
+LogStart() {
+	Log "$1 Started at $(date)"
+}
+
+LogEnd() {
+	Log "$2 Ended at $(date)"
+}
+
+RunMain
+
+ if [[ "1" == $DEBUG ]]; then
+	killall socat
+ fi
+
